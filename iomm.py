@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import beta
 
 class IOMM():
-    def __init__(self, N, K, D, N_iter, Z, X, theta, alpha_prior, omega = 10, copy_rows = 4):
+    def __init__(self, N, K, D, N_iter, Z, X, theta, alpha_prior, omega = 10, copy_rows = 4,burning_period=3):
         self.N = N
         self.K = K
         self.D = D
@@ -15,6 +15,7 @@ class IOMM():
         self.P_Z = np.zeros([N,K])
         self.X = X
         self.theta = theta
+        self.burning_period=burning_period
         #NORMALIZATION CONSTANT
         
         self.norm_lh = self.compute_norm_lh(Z,N,K)
@@ -35,7 +36,9 @@ class IOMM():
     def learning(self,apply_log):
         for j in range(self.N_iter):
             print("iteration n°",j)
-            self.Z, self.P_Z = self.update_clusters()
+            #during burning period we do not update Z
+            if j>self.burning_period:
+                self.Z, self.P_Z = self.update_clusters()
             if apply_log==False:
                 self.theta = self.resample_theta()
             else:
@@ -100,6 +103,11 @@ class IOMM():
         for d in range(self.D):
             #extract current theta_d at index k
             theta_current = theta[:,d]
+            #if theta is too small or too close to one, redraw another theta so that theta_prop does not collapse
+            for k in range(self.K):
+                while (theta_current[k] < 10**(-3) or theta_current[k] > 0.95):
+                    print("redraw theta",k)
+                    theta_current[k]=beta.rvs(a,1)
             print("current theta:",theta_current)
             
             #draw a proposal parameter centered around its current value
@@ -141,6 +149,11 @@ class IOMM():
         for d in range(self.D):
             #extract current theta_d at index k
             theta_current = theta[:,d]
+            #if theta is too small, redraw another theta so that theta_prop does not collapse
+            for k in range(self.K):
+                if (theta_current[k] < 10**(-3) or theta_current[k] > 0.95):
+                    print("redraw theta",k)
+                    theta_current[k]=beta.rvs(a,1)
             print("current theta:",theta_current)
             
             #draw a proposal parameter centered around its current value
@@ -157,7 +170,7 @@ class IOMM():
             lh_theta_current = np.log(self.likelihood_ber_d(theta_current, d))
             print("likelihood current theta:", lh_theta_current)
             lh_theta_prop = np.log(self.likelihood_ber_d(theta_prop, d))
-            print("likelihood current prop:", lh_theta_prop)
+            print("likelihood prop theta:", lh_theta_prop)
             
             for k in range(self.K):
                 #transition probabilities theta|theta_prop and theta_prop|theta
