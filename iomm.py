@@ -2,6 +2,7 @@
 import numpy as np
 from scipy.stats import beta
 from scipy.stats import truncnorm
+from scipy.stats import norm
 
 class IOMM():
     def __init__(self, N, K, D, N_iter, Z, X, theta, alpha_prior, omega = 10, copy_rows = 4,burning_period=3):
@@ -34,18 +35,26 @@ class IOMM():
         print("norm_lh =", result)
         return result
     
-    def learning(self,apply_log):
+    def learning(self,apply_log,random_walk):
+        theta_accept=[]
         for j in range(self.N_iter):
             print("iteration n°",j)
             #during burning period we do not update Z
             if j>self.burning_period:
                 self.Z, self.P_Z = self.update_clusters()
-            if apply_log==False:
-                self.theta = self.resample_theta()[0]
-                print("the acceptance rate was:",self.resample_theta()[1])
+            if apply_log==True:
+                self.theta = self.resample_theta_log()[0]
+                theta_accept.append(self.theta) #store the resampled theta matrix K*D
+            elif random_walk==True:
+                self.theta = self.resample_theta_rw()[0]
+                theta_accept.append(self.theta)
             else:
-                self.theta = self.resample_theta_log()
-        return self.Z # return Z_hat
+                theta_new,accept_ratio = self.resample_theta()
+                self.theta = theta_new
+                print("the acceptance rate was:",accept_ratio)
+            print(self.theta)
+            theta_accept.append(self.theta)
+        return self.Z,theta_accept # return Z_hat and list of resampled theta
     
     def update_clusters(self):
         Z = self.Z
@@ -115,9 +124,6 @@ class IOMM():
             
             #draw a proposal parameter centered around its current value
             theta_prop = self.proposal_beta(theta_current)
-            #random walk proposal
-            #theta_prop=truncnorm.rvs(a=(0-theta_current)/std_prop,b=(1-theta_current)/std_prop,
-            #                        loc=theta_current,scale=std_prop,size=self.K)
             print("theta_k_d proposal:",theta_prop)
             
             #joint prior BETA(alpha/K,1) density over current and proposed parameters
@@ -135,9 +141,9 @@ class IOMM():
             
             for k in range(self.K):
                 #transition probabilities theta|theta_prop and theta_prop|theta
-                trans_theta_current = self.trans_proba_beta(theta_current, theta_prop, k, d)
+                trans_theta_current = self.trans_proba_beta(theta_current, theta_prop, k)
                 print("transition proba current | prop :",trans_theta_current)
-                trans_theta_prop = self.trans_proba_beta(theta_prop, theta_current, k, d)
+                trans_theta_prop = self.trans_proba_beta(theta_prop, theta_current, k)
                 print("transition proba prop | current :",trans_theta_prop)
                 #accept/reject probability
                 numerator = np.dot(lh_theta_prop,prior_theta_prop) * trans_theta_current
@@ -147,6 +153,7 @@ class IOMM():
                 
                 if np.random.uniform(0,1)< min(accept_proba,1):
                     theta[k,d]=theta_prop[k]
+                    print("accept")
                     accept_rate=accept_rate+1
         accept_rate=accept_rate/(self.K*self.D)
         return (theta,accept_rate)
@@ -183,8 +190,8 @@ class IOMM():
             
             for k in range(self.K):
                 #transition probabilities theta|theta_prop and theta_prop|theta
-                trans_theta_prop = np.log(self.trans_proba_beta(theta_current, theta_prop, k, d))
-                trans_theta_current = np.log(self.trans_proba_beta(theta_prop, theta_current, k, d))
+                trans_theta_prop = np.log(self.trans_proba_beta(theta_current, theta_prop, k))
+                trans_theta_current = np.log(self.trans_proba_beta(theta_prop, theta_current, k))
                 
                 #accept/reject probability
                 numerator = np.sum(lh_theta_prop) + np.sum(prior_theta_prop) + trans_theta_current
@@ -200,7 +207,7 @@ class IOMM():
     def resample_theta_rw(self):
         theta = self.theta
         a = self.alpha_prior / self.K
-        std_prop=0.1
+        std_prop=0.1 #standard deviation of truncated normal RW proposal
         print("_______3.resample theta|Z,X using MHA_______")
         for d in range(self.D):
             #extract current theta_d at index k
@@ -213,7 +220,7 @@ class IOMM():
             print("current theta:",theta_current)
             
             #draw a proposal parameter centered around its current value
-            #random walk proposal
+            #random walk proposal, gaussian truncated to interval (0,1)
             theta_prop=truncnorm.rvs(a=(0-theta_current)/std_prop,b=(1-theta_current)/std_prop,
                                      loc=theta_current,scale=std_prop,size=self.K)
             print("theta_k_d proposal:",theta_prop)
@@ -233,9 +240,9 @@ class IOMM():
             
             for k in range(self.K):
                 #transition probabilities theta|theta_prop and theta_prop|theta
-                trans_theta_current = norm.cdf(theta_current[k,d]/theta_prop[k,d],loc=0,scale=1,size=1)
+                trans_theta_current = norm.cdf(theta_current[k]/theta_prop[k],loc=0,scale=1)
                 print("transition proba current | prop :",trans_theta_current)
-                trans_theta_prop = norm.cdf(theta_prop[k,d]/theta_current[k,d],loc=0,scale=1,size=1)
+                trans_theta_prop = norm.cdf(theta_prop[k]/theta_current[k],loc=0,scale=1)
                 print("transition proba prop | current :",trans_theta_prop)
                 #accept/reject probability
                 numerator = np.dot(lh_theta_prop,prior_theta_prop) * trans_theta_current
@@ -244,6 +251,7 @@ class IOMM():
                 print("acceptance probability =",accept_proba)
                 
                 if np.random.uniform(0,1)< min(accept_proba,1):
+                    print("accept")
                     theta[k,d]=theta_prop[k]
             
         return theta
@@ -252,7 +260,7 @@ class IOMM():
         omega = self.omega
         return (beta.rvs(omega*theta_d,omega*(1-theta_d)))
     
-    def trans_proba_beta(self, theta, theta_param, k, d):
+    def trans_proba_beta(self, theta, theta_param, k):
     #transition probability
         omega = self.omega
         theta_param_value = theta_param[k]
