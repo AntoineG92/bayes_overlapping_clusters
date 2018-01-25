@@ -42,6 +42,7 @@ class IOMM():
             #during burning period we do not update Z
             if j>self.burning_period:
                 self.Z, self.P_Z = self.update_clusters()
+                
             if apply_log==True:
                 self.theta = self.resample_theta_log()[0]
                 theta_accept.append(self.theta) #store the resampled theta matrix K*D
@@ -53,7 +54,9 @@ class IOMM():
                 self.theta = theta_new
                 print("the acceptance rate was:",accept_ratio)
             print(self.theta)
-            theta_accept.append(self.theta)
+            theta_to_append = {}
+            theta_to_append= np.copy(theta_new)
+            theta_accept.append(theta_to_append)
         return self.Z,theta_accept # return Z_hat and list of resampled theta
     
     def update_clusters(self):
