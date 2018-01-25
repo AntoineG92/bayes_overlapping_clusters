@@ -44,11 +44,13 @@ class IOMM():
                 self.Z, self.P_Z = self.update_clusters()
                 
             if apply_log==True:
-                self.theta = self.resample_theta_log()[0]
-                theta_accept.append(self.theta) #store the resampled theta matrix K*D
+                theta_new,accept_ratio = self.resample_theta_log()
+                self.theta = theta_new
+                print("the acceptance rate was:",accept_ratio)
             elif random_walk==True:
-                self.theta = self.resample_theta_rw()[0]
-                theta_accept.append(self.theta)
+                theta_new,accept_ratio = self.resample_theta_rw()
+                self.theta = theta_new
+                print("the acceptance rate was:",accept_ratio)
             else:
                 theta_new,accept_ratio = self.resample_theta()
                 self.theta = theta_new
@@ -208,6 +210,7 @@ class IOMM():
         return theta
 
     def resample_theta_rw(self):
+        accept_rate=0
         theta = self.theta
         a = self.alpha_prior / self.K
         std_prop=0.1 #standard deviation of truncated normal RW proposal
@@ -256,8 +259,9 @@ class IOMM():
                 if np.random.uniform(0,1)< min(accept_proba,1):
                     print("accept")
                     theta[k,d]=theta_prop[k]
-            
-        return theta
+                    accept_rate=accept_rate+1
+        accept_rate=accept_rate/(self.K*self.D)    
+        return (theta,accept_rate)
     
     def proposal_beta(self, theta_d):
         omega = self.omega
