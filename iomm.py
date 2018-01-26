@@ -49,7 +49,9 @@ class IOMM():
             if j>self.burning_period:
                 self.Z_temp, self.P_Z = self.update_clusters()
                 Z_mean=self.Z_temp+Z_mean
-                
+                print("Z_mean sum:",np.sum(Z_mean))
+                print("Z_temp sum:",np.sum(self.Z_temp))
+                print("Z sum:",np.sum(self.Z))
             if apply_log==True:
                 theta_new,accept_ratio = self.resample_theta_log()
                 self.theta = theta_new
@@ -67,6 +69,7 @@ class IOMM():
             theta_to_append= np.copy(theta_new)
             theta_accept.append(theta_to_append)
         Z_mean=Z_mean/(self.N_iter-self.burning_period)
+        
         return self.Z_temp,theta_accept,Z_mean
     
     def update_clusters(self):
