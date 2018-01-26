@@ -44,11 +44,13 @@ class IOMM():
             #initialize Z_temp and P_Z_temp at each iteration
             self.Z_temp = np.zeros([self.N,self.K])
             self.P_Z = np.zeros([self.N,self.K])
+            U = np.zeros([self.N,self.N])
             print("iteration n°",j)
             #during burning period we do not update Z
             if j>self.burning_period:
                 self.Z_temp, self.P_Z = self.update_clusters()
                 Z_mean=self.Z_temp+Z_mean
+                U=U+np.dot(self.Z_temp,self.Z_temp.T)
                 print("Z_mean sum:",np.sum(Z_mean))
                 print("Z_temp sum:",np.sum(self.Z_temp))
                 print("Z sum:",np.sum(self.Z))
@@ -69,11 +71,12 @@ class IOMM():
             theta_to_append= np.copy(theta_new)
             theta_accept.append(theta_to_append)
         Z_mean=Z_mean/(self.N_iter-self.burning_period)
+        U = U / (self.N_iter-self.burning_period)
         
-        return self.Z_temp,theta_accept,Z_mean
+        return self.Z_temp,theta_accept,Z_mean,U
     
     def update_clusters(self):
-        Z = self.Z
+        Z = np.copy(self.Z)
         P_Z = self.P_Z
         
         for i in range(self.copy_rows, self.N):
