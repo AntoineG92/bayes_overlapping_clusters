@@ -20,10 +20,12 @@ class IOMM():
         self.burning_period=burning_period
         #NORMALIZATION CONSTANT
         
-        self.norm_lh = self.compute_norm_lh(Z,N,K)
+        #self.norm_lh = self.compute_norm_lh(Z,N,K)
         self.alpha_prior = alpha_prior
         self.omega = omega
         self.copy_rows = copy_rows
+        
+        self.Z_temp = np.zeros([self.N,self.K])
     
     def compute_norm_lh(self, Z, N, K):
         norm_lh = np.zeros(K)
@@ -37,11 +39,16 @@ class IOMM():
     
     def learning(self,apply_log,random_walk):
         theta_accept=[]
+        Z_mean=np.zeros([self.N,self.K])
         for j in range(self.N_iter):
+            #initialize Z_temp and P_Z_temp at each iteration
+            self.Z_temp = np.zeros([self.N,self.K])
+            self.P_Z = np.zeros([self.N,self.K])
             print("iteration n°",j)
             #during burning period we do not update Z
             if j>self.burning_period:
-                self.Z, self.P_Z = self.update_clusters()
+                self.Z_temp, self.P_Z = self.update_clusters()
+                Z_mean=self.Z_temp+Z_mean
                 
             if apply_log==True:
                 theta_new,accept_ratio = self.resample_theta_log()
@@ -59,7 +66,8 @@ class IOMM():
             theta_to_append = {}
             theta_to_append= np.copy(theta_new)
             theta_accept.append(theta_to_append)
-        return self.Z,theta_accept # return Z_hat and list of resampled theta
+        Z_mean=Z_mean/(self.N_iter-self.burning_period)
+        return self.Z_temp,theta_accept,Z_mean
     
     def update_clusters(self):
         Z = self.Z
@@ -81,9 +89,12 @@ class IOMM():
                 print("k=",k)
                 Z_cond = np.copy(Z)
                 Z_cond[i,k]=1
-                P_Z[i,k]=(m_without_i_k/self.N) * self.likelihood_ber(Z_cond,i,k)/ self.norm_lh
-            print("proba Z=1:",P_Z[i,k])
-        
+                P_Z_1=(m_without_i_k/self.N) * self.likelihood_ber(Z_cond,i,k) #/ self.norm_lh
+                Z_cond[i,k]=0
+                P_Z_0=((self.N-m_without_i_k)/self.N) * self.likelihood_ber(Z_cond,i,k)
+                P_Z[i,k]=P_Z_1 / (P_Z_1 + P_Z_0)
+                print("proba Z=1:",P_Z[i,k])
+       
         return P_Z[i,:]    
         
         
@@ -213,7 +224,7 @@ class IOMM():
         accept_rate=0
         theta = self.theta
         a = self.alpha_prior / self.K
-        std_prop=0.1 #standard deviation of truncated normal RW proposal
+        std_prop=0.05 #standard deviation of truncated normal RW proposal
         print("_______3.resample theta|Z,X using MHA_______")
         for d in range(self.D):
             #extract current theta_d at index k
@@ -281,7 +292,7 @@ class IOMM():
         
         temp = 0
         for i in range(self.N):
-            temp += self.Z[i,:] * self.X[i,d] * log_theta_ratio
+            temp += self.Z_temp[i,:] * self.X[i,d] * log_theta_ratio
         lh = np.exp(temp)
             
         return lh                   
