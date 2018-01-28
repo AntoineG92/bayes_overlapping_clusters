@@ -28,6 +28,7 @@ class IOMM():
         
         self.Z_temp = np.zeros([self.N,self.K])
         self.K_hat=self.K
+        self.Z_hat=np.copy(self.Z)
     
     def compute_norm_lh(self, Z, N, K):
         norm_lh = np.zeros(K)
@@ -42,30 +43,34 @@ class IOMM():
     def learning(self,apply_log,random_walk):
         theta_accept=[]
         theta_hat=np.copy(self.theta)
-        Z_hat=np.copy(self.Z)
+        self.Z_hat=np.copy(self.Z)
+        U = np.zeros([self.N,self.N])
         for j in range(self.N_iter):
             #initialize Z_temp and P_Z_temp at each iteration
             self.Z_temp = np.zeros([self.N,self.K_hat])
             self.P_Z = np.zeros([self.N,self.K_hat])
-            U = np.zeros([self.N,self.N])
             print("iteration n°",j)
             #during burning period we do not update Z
             if j>self.burning_period:
-                self.Z_temp, self.P_Z, Z_hat = self.update_clusters()  
-                U=U+np.dot(Z_hat,Z_hat.T)
+                self.Z_temp, self.P_Z, self.Z_hat = self.update_clusters()
+                #print("matrix Z before computing U:",self.Z_hat)
+                #print("current ZZt:",np.dot(self.Z_hat,self.Z_hat.T))
+                U=U+np.dot(self.Z_hat,self.Z_hat.T)
+                print("sum of U's:",U)
+                print("diff U-ZZt",U-np.dot(self.Z_hat,self.Z_hat.T))
                 #create new extended matrix of theta
-                theta_hat=np.zeros([Z_hat.shape[1],self.D])
+                theta_hat=np.zeros([self.Z_hat.shape[1],self.D])
                 #fill theta_hat with elements of theta for subset K*D
                 theta_hat[:self.K_hat,:self.D]=self.theta
                 #fill the new rows with the prior beta()
-                if Z_hat.shape[1] > self.K_hat:
-                    for k_plus in range(self.K_hat,Z_hat.shape[1]):
+                if self.Z_hat.shape[1] > self.K_hat:
+                    for k_plus in range(self.K_hat,self.Z_hat.shape[1]):
                         print("k+",k_plus)
                         #print("shape theta
                         theta_hat[k_plus,:self.D]=beta.rvs(self.alpha_prior/self.K_hat,1,size=self.D)
                 print("New theta:",theta_hat)
                 print("shape of new theta:",theta_hat.shape)
-                self.K_hat=Z_hat.shape[1] #new K_hat
+                self.K_hat=self.Z_hat.shape[1] #new K_hat
 
             if apply_log==True:
                 theta_new,accept_ratio = self.resample_theta_log()
@@ -76,7 +81,7 @@ class IOMM():
                 self.theta = theta_new
                 print("the acceptance rate was:",accept_ratio)
             else:
-                theta_new,accept_ratio = self.resample_theta(theta_hat,Z_hat)
+                theta_new,accept_ratio = self.resample_theta(theta_hat)
                 self.theta = theta_new
                 #print("the acceptance rate was:",accept_ratio)
             print(self.theta)
@@ -85,38 +90,41 @@ class IOMM():
             theta_accept.append(theta_to_append)
         U = U / (self.N_iter-self.burning_period)
         
-        return Z_hat,theta_accept,U
+        return self.Z_hat,theta_accept,U
     
     def update_clusters(self):
         Z = np.copy(self.Z)
         P_Z = self.P_Z
+        Z_hat_new=np.copy(self.Z_hat) #matrix Z_hat that will be updated with existing clusters before drawing new ones
         N_prop_cluster=[]
         for i in range(self.copy_rows, self.N):
             print("i =",i)
-            P_Z[i,:] = self.update_p_z_i(i, P_Z, Z)
-            Z[i,:] = self.propose_new_clusters(i, P_Z, Z)
+            P_Z[i,:] = self.update_p_z_i(i, P_Z)
+            Z_hat_new[i,:] = self.propose_new_clusters(i, P_Z)
             #Propose adding new clusters wrt Poisson(alpha/N)
             N_prop_cluster.append(poisson.rvs(self.alpha_prior/self.N))
             print("new clusters proposed for i:",N_prop_cluster)
         #We now have the new cluster proposal for all observations. We can create the new extended matrix Z_hat
         #create the bigger matrix from scratch. If max number of new clusters is below K_hat, do not extend the size
-        Z_hat=np.zeros([self.N,self.K+max(self.K_hat-self.K,np.max(N_prop_cluster))])
+        self.Z_hat=np.zeros([self.N,self.K+max(self.K_hat-self.K,np.max(N_prop_cluster))])
         #assign subset of existing matrix Z
-        Z_hat[:self.N,:self.K]=np.copy(Z)
-        #fill the remaining rows with ones according to the Poisson(alpha/N) draw             
-        for i in range(self.N-self.copy_rows):
-            print("Number of proposed clusters:",N_prop_cluster[i])
-            Z_hat[i,self.K:self.K+N_prop_cluster[i]]=np.ones(N_prop_cluster[i])
-        print("Z_hat",Z_hat)
-        print("Z_hat shape",Z_hat.shape)               
-        return Z, P_Z, Z_hat
+        self.Z_hat[:self.N,:self.K_hat]=np.copy(Z_hat_new)
+        #fill the remaining rows with ones according to the Poisson(alpha/N) draw
+        if np.max(N_prop_cluster) > self.K_hat-self.K:
+            for i in range(self.N-self.copy_rows):
+                print("Number of proposed clusters:",N_prop_cluster[i])
+                if N_prop_cluster[i] > self.K_hat-self.K:
+                    self.Z_hat[i,self.K_hat:self.K+N_prop_cluster[i]]=np.ones(N_prop_cluster[i]-(self.K_hat-self.K))
+        print("Z_hat",self.Z_hat)
+        print("Z_hat shape",self.Z_hat.shape)               
+        return Z, P_Z, self.Z_hat
     
-    def update_p_z_i(self, i, P_Z, Z):
+    def update_p_z_i(self, i, P_Z):
         print("___________1.compute probability of observation i taking category k_________")
-        
-        for k in range(self.K):
-            m_without_i_k = self.m_without_i_k(Z,i,k)
-            if m_without_i_k > 0 and Z[i,k] == 0:  #we care only about categories that are not yet considered for movie i
+        Z=np.copy(self.Z_hat)
+        for k in range(self.K_hat):
+            m_without_i_k = self.m_without_i_k(i,k)
+            if m_without_i_k > 0 and self.Z_hat[i,k] == 0:#we care only about categories that are not yet considered for movie i
                 print("k=",k)
                 Z_cond = np.copy(Z)
                 Z_cond[i,k]=1
@@ -129,11 +137,11 @@ class IOMM():
         return P_Z[i,:]    
         
         
-    def m_without_i_k(self, Z, i, k):
+    def m_without_i_k(self, i, k):
         result = 0
         for j in range(self.N):
             if j != i:
-                result += Z[j,k]
+                result += self.Z_hat[j,k]
         
         return result
     
@@ -145,15 +153,16 @@ class IOMM():
         
         return np.exp(temp)
     
-    def propose_new_clusters(self, i, P_Z, Z):
+    def propose_new_clusters(self, i, P_Z):
         print("_________2.propose adding new clusters________")
-        for k in range(self.K):
+        Z=np.copy(self.Z_hat)
+        for k in range(self.K_hat):
             if Z[i,k]==0 and np.random.uniform(0,1)<P_Z[i,k]:
                 print('accepted for k =', k)
                 Z[i,k]=1
         return Z[i,:]
         
-    def resample_theta(self,theta_hat,Z_hat):
+    def resample_theta(self,theta_hat):
         accept_rate=0
         theta = theta_hat
         a = self.alpha_prior / self.K_hat
@@ -180,9 +189,9 @@ class IOMM():
             #print("joint prior prop theta:", prior_theta_prop)
             
             #likelihood densities
-            lh_theta_current = self.likelihood_ber_d(theta_current, d, Z_hat)
+            lh_theta_current = self.likelihood_ber_d(theta_current, d)
             #print("likelihood current theta:", lh_theta_current)
-            lh_theta_prop = self.likelihood_ber_d(theta_prop, d, Z_hat)
+            lh_theta_prop = self.likelihood_ber_d(theta_prop, d)
             #print("likelihood current prop:", lh_theta_prop)
             #print('ratio likelihood*prior',np.dot(lh_theta_prop,prior_theta_prop)/np.dot(lh_theta_current,prior_theta_current))
             
@@ -316,14 +325,14 @@ class IOMM():
         theta_value = theta[k]
         return (beta.pdf(theta_value,omega*theta_param_value,omega*(1-theta_param_value)))
     
-    def likelihood_ber_d(self, theta_vect, d, Z_hat):
+    def likelihood_ber_d(self, theta_vect, d):
     #LIKELIHOOD OF K DIMENSIONAL ARRAY (for MHA algo)        
         lh=np.zeros(self.K_hat)
         log_theta_ratio = np.log(theta_vect/(1-theta_vect))
         
         temp = 0
         for i in range(self.N):
-            temp += Z_hat[i,:] * self.X[i,d] * log_theta_ratio
+            temp += self.Z_hat[i,:] * self.X[i,d] * log_theta_ratio
         lh = np.exp(temp)
             
         return lh                   

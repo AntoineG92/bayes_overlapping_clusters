@@ -20,7 +20,7 @@ class IOMM():
         self.burning_period=burning_period
         #NORMALIZATION CONSTANT
         
-        #self.norm_lh = self.compute_norm_lh(Z,N,K)
+        self.norm_lh = self.compute_norm_lh(Z,N,K)
         self.alpha_prior = alpha_prior
         self.omega = omega
         self.copy_rows = copy_rows
@@ -40,11 +40,11 @@ class IOMM():
     def learning(self,apply_log,random_walk):
         theta_accept=[]
         Z_mean=np.zeros([self.N,self.K])
+        U = np.zeros([self.N,self.N])
         for j in range(self.N_iter):
             #initialize Z_temp and P_Z_temp at each iteration
             self.Z_temp = np.zeros([self.N,self.K])
             self.P_Z = np.zeros([self.N,self.K])
-            U = np.zeros([self.N,self.N])
             print("iteration n°",j)
             #during burning period we do not update Z
             if j>self.burning_period:
@@ -95,10 +95,10 @@ class IOMM():
                 print("k=",k)
                 Z_cond = np.copy(Z)
                 Z_cond[i,k]=1
-                P_Z_1=(m_without_i_k/self.N) * self.likelihood_ber(Z_cond,i,k) #/ self.norm_lh
-                Z_cond[i,k]=0
-                P_Z_0=((self.N-m_without_i_k)/self.N) * self.likelihood_ber(Z_cond,i,k)
-                P_Z[i,k]=P_Z_1 / (P_Z_1 + P_Z_0)
+                P_Z_1=(m_without_i_k/self.N) * self.likelihood_ber(Z_cond,i,k) / self.norm_lh
+                #Z_cond[i,k]=0
+                #P_Z_0=((self.N-m_without_i_k)/self.N) * self.likelihood_ber(Z_cond,i,k)
+                P_Z[i,k]=P_Z_1 #/ (P_Z_1 + P_Z_0)
                 print("proba Z=1:",P_Z[i,k])
        
         return P_Z[i,:]    
