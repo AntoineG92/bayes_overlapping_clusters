@@ -3,6 +3,7 @@ import numpy as np
 from scipy.stats import beta
 from scipy.stats import truncnorm
 from scipy.stats import norm
+from scipy.stats import bernoulli
 
 class IOMM():
     def __init__(self, N, K, D, N_iter, Z, X, theta, alpha_prior, omega = 10, copy_rows = 4,burning_period=3):
@@ -20,7 +21,7 @@ class IOMM():
         self.burning_period=burning_period
         #NORMALIZATION CONSTANT
         
-        self.norm_lh = self.compute_norm_lh(Z,N,K)
+        #self.norm_lh = self.compute_norm_lh(Z,N,K)
         self.alpha_prior = alpha_prior
         self.omega = omega
         self.copy_rows = copy_rows
@@ -95,10 +96,10 @@ class IOMM():
                 print("k=",k)
                 Z_cond = np.copy(Z)
                 Z_cond[i,k]=1
-                P_Z_1=(m_without_i_k/self.N) * self.likelihood_ber(Z_cond,i,k) / self.norm_lh
-                #Z_cond[i,k]=0
-                #P_Z_0=((self.N-m_without_i_k)/self.N) * self.likelihood_ber(Z_cond,i,k)
-                P_Z[i,k]=P_Z_1 #/ (P_Z_1 + P_Z_0)
+                P_Z_1=(m_without_i_k/self.N) * self.likelihood_ber(Z_cond,i,k) #/ self.norm_lh
+                Z_cond[i,k]=0
+                P_Z_0=((self.N-m_without_i_k)/self.N) * self.likelihood_ber(Z_cond,i,k)
+                P_Z[i,k]=P_Z_1 / (P_Z_1 + P_Z_0)
                 print("proba Z=1:",P_Z[i,k])
        
         return P_Z[i,:]    
@@ -112,13 +113,21 @@ class IOMM():
         
         return result
     
-    def likelihood_ber(self, Z, i, k):
+    def likelihood_ber(self, Z, i,k):
     #LIKELIHOOD density of observation i, k fixed
-        temp = 0
+        #temp = 0
+        #for d in range(self.D):
+        #    temp += Z[i,k] * self.X[i,d] * np.log(self.theta[k,d]/(1-self.theta[k,d]))
+        result=1
+        num=1
+        den1=1
         for d in range(self.D):
-            temp += Z[i,k] * self.X[i,d] * np.log(self.theta[k,d]/(1-self.theta[k,d]))
-        
-        return np.exp(temp)
+            for k in range(self.K):  #compute theta_d equation (7)
+                num=num*self.theta[k,d]**Z[i,k]
+                den1=den1*(1-self.theta[k,d])**Z[i,k]
+                theta_d=num/(den1+num)
+            result=result*bernoulli.pmf(k=self.X[i,d],p=theta_d) #compute likelihood
+        return result
     
     def propose_new_clusters(self, i, P_Z, Z):
         print("_________2.propose adding new clusters________")
