@@ -37,3 +37,43 @@ def random_theta(N, K, D, alpha_prior):
     for k in range(K):
         theta[k,:]=beta.rvs(alpha_prior/K,1,size=D)
     return theta
+
+def get_mat_random(mat_x, list_rows):
+    mat_y = np.zeros((mat_x.shape[0], mat_x.shape[1]))
+    for i in range(mat_x.shape[0]):
+        mat_y[i,:] = mat_x[list_rows[i],:]
+    return mat_y
+
+def clear_users(data):    
+    nbr_clear = 0
+    list_col = []
+    for i in range(data.shape[1]):
+        temp_ratings = data[:,i]
+        nbr_ratings = sum(temp_ratings)    
+        if nbr_ratings > 20: 
+            list_col.append(i)
+            #data = np.delete(data, i, 1)
+        else:
+            nbr_clear += 1
+    if len(list_col)>0:
+        data_cleaned = data[:,list_col]
+    else:
+        data_cleaned = data
+    return data_cleaned, nbr_clear
+
+def clear_movies(data):
+    nbr_clear = 0
+    list_row = []
+    for i in range(data.shape[0]):
+        temp_ratings = data[i,:]
+        nbr_ratings = sum(temp_ratings)    
+        if nbr_ratings > 10: 
+            list_row.append(i)
+            #data = np.delete(data, i, 0)
+        else:
+            nbr_clear += 1
+    if len(list_row)>0:
+        data_cleaned = data[list_row,:]
+    else:
+        data_cleaned = data
+    return data_cleaned, nbr_clear
