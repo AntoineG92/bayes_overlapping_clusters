@@ -6,39 +6,30 @@ from scipy.stats import norm
 from scipy.stats import bernoulli
 
 class IOMM():
-    def __init__(self, N, K, D, N_iter, Z, X, theta, alpha_prior, omega = 10, copy_rows = 4,burning_period=3):
+    def __init__(self, N, K, D, N_iter, Z, X, theta, alpha_prior, omega = 10, copy_rows=3,burning_period=3):
         self.N = N
         self.K = K
         self.D = D
         self.N_iter = N_iter
-        #self.Z = Z
-        # Z_hat
-        self.Z = np.zeros([N,K])
-        self.Z[:copy_rows,:] = Z[:copy_rows,:]
         self.P_Z = np.zeros([N,K])
         self.X = X
         self.theta = theta
-        self.burning_period=burning_period
-        #NORMALIZATION CONSTANT
-        
-        #self.norm_lh = self.compute_norm_lh(Z,N,K)
+        self.burning_period=burning_period        
         self.alpha_prior = alpha_prior
         self.omega = omega
         self.copy_rows = copy_rows
+        ind_train=np.random.randint(0,self.N,self.copy_rows)
+        self.ind_train=ind_train
+        ind_test=np.delete(np.arange(self.N),self.ind_train)
+        self.ind_test=ind_test
+        self.Z = np.zeros([N,K])
+        self.Z[ind_train,:] = Z[ind_train,:]
         
         self.Z_temp = np.zeros([self.N,self.K])
     
-    def compute_norm_lh(self, Z, N, K):
-        norm_lh = np.zeros(K)
-        for k in range(K):
-            for i in range(N):
-                norm_lh[k] += self.likelihood_ber(Z,i,k)
-            print("norm_lh[",k,"] = ",norm_lh[k])
-        result = np.median(norm_lh)
-        print("norm_lh =", result)
-        return result
-    
-    def learning(self,apply_log,random_walk):
+
+    def learning(self,random_walk):
+        print("ind test",self.ind_test)
         theta_accept=[]
         Z_mean=np.zeros([self.N,self.K])
         U = np.zeros([self.N,self.N])
@@ -52,14 +43,7 @@ class IOMM():
                 self.Z_temp, self.P_Z = self.update_clusters()
                 Z_mean=self.Z_temp+Z_mean
                 U=U+np.dot(self.Z_temp,self.Z_temp.T)
-                print("Z_mean sum:",np.sum(Z_mean))
-                print("Z_temp sum:",np.sum(self.Z_temp))
-                print("Z sum:",np.sum(self.Z))
-            if apply_log==True:
-                theta_new,accept_ratio = self.resample_theta_log()
-                self.theta = theta_new
-                print("the acceptance rate was:",accept_ratio)
-            elif random_walk==True:
+            if random_walk==True:
                 theta_new,accept_ratio = self.resample_theta_rw()
                 self.theta = theta_new
                 print("the acceptance rate was:",accept_ratio)
@@ -80,7 +64,7 @@ class IOMM():
         Z = np.copy(self.Z)
         P_Z = self.P_Z
         
-        for i in range(self.copy_rows, self.N):
+        for i in self.ind_test:
             print("i =",i)
             P_Z[i,:] = self.update_p_z_i(i, P_Z, Z)
             Z[i,:] = self.propose_new_clusters(i, P_Z, Z)
@@ -115,9 +99,6 @@ class IOMM():
     
     def likelihood_ber(self, Z, i,k):
     #LIKELIHOOD density of observation i, k fixed
-        #temp = 0
-        #for d in range(self.D):
-        #    temp += Z[i,k] * self.X[i,d] * np.log(self.theta[k,d]/(1-self.theta[k,d]))
         result=1
         num=1
         den1=1
@@ -139,7 +120,7 @@ class IOMM():
         
     def resample_theta(self):
         accept_rate=0
-        theta = self.theta
+        theta = np.copy(self.theta)
         a = self.alpha_prior / self.K
         std_prop=0.1
         print("_______3.resample theta|Z,X using MHA_______")
@@ -148,39 +129,29 @@ class IOMM():
             theta_current = theta[:,d]
             #if theta is too small or too close to one, redraw another theta so that theta_prop does not collapse
             for k in range(self.K):
-                while (theta_current[k] < 10**(-3) or theta_current[k] > 0.95):
+                while (theta_current[k] < 10**(-2) or theta_current[k] > 0.95):
                     print("redraw theta",k)
                     theta_current[k]=beta.rvs(a,1)
-            print("current theta:",theta_current)
             
             #draw a proposal parameter centered around its current value
             theta_prop = self.proposal_beta(theta_current)
-            print("theta_k_d proposal:",theta_prop)
             
             #joint prior BETA(alpha/K,1) density over current and proposed parameters
             prior_theta_current = beta.pdf(theta_current, a, 1)
-            print("joint prior current theta:", prior_theta_current)
             prior_theta_prop = beta.pdf(theta_prop, a, 1)
-            print("joint prior prop theta:", prior_theta_prop)
             
             #likelihood densities
             lh_theta_current = self.likelihood_ber_d(theta_current, d)
-            print("likelihood current theta:", lh_theta_current)
             lh_theta_prop = self.likelihood_ber_d(theta_prop, d)
-            print("likelihood current prop:", lh_theta_prop)
-            print('ratio likelihood*prior',np.dot(lh_theta_prop,prior_theta_prop)/np.dot(lh_theta_current,prior_theta_current))
             
             for k in range(self.K):
                 #transition probabilities theta|theta_prop and theta_prop|theta
                 trans_theta_current = self.trans_proba_beta(theta_current, theta_prop, k)
-                print("transition proba current | prop :",trans_theta_current)
                 trans_theta_prop = self.trans_proba_beta(theta_prop, theta_current, k)
-                print("transition proba prop | current :",trans_theta_prop)
                 #accept/reject probability
                 numerator = np.dot(lh_theta_prop,prior_theta_prop) * trans_theta_current
                 denominator = np.dot(lh_theta_current,prior_theta_current) * trans_theta_prop
                 accept_proba= numerator / denominator
-                print("acceptance probability =",accept_proba)
                 
                 if np.random.uniform(0,1)< min(accept_proba,1):
                     theta[k,d]=theta_prop[k]
@@ -189,57 +160,11 @@ class IOMM():
         accept_rate=accept_rate/(self.K*self.D)
         return (theta,accept_rate)
     
-    def resample_theta_log(self):
-        theta = self.theta
-        a = self.alpha_prior / self.K
-        print("_______3.resample theta|Z,X using MHA_______")
-        for d in range(self.D):
-            #extract current theta_d at index k
-            theta_current = theta[:,d]
-            #if theta is too small, redraw another theta so that theta_prop does not collapse
-            for k in range(self.K):
-                if (theta_current[k] < 10**(-3) or theta_current[k] > 0.95):
-                    print("redraw theta",k)
-                    theta_current[k]=beta.rvs(a,1)
-            print("current theta:",theta_current)
-            
-            #draw a proposal parameter centered around its current value
-            theta_prop = self.proposal_beta(theta_current)
-            print("theta_k_d proposal:",theta_prop)
-            
-            #joint prior BETA(alpha/K,1) density over current and proposed parameters
-            prior_theta_current = beta.logpdf(theta_current, a, 1)
-            print("joint prior current theta:", prior_theta_current)
-            prior_theta_prop = beta.logpdf(theta_prop, a, 1)
-            print("joint prior prop theta:", prior_theta_prop)
-            
-            #likelihood densities
-            lh_theta_current = np.log(self.likelihood_ber_d(theta_current, d))
-            print("likelihood current theta:", lh_theta_current)
-            lh_theta_prop = np.log(self.likelihood_ber_d(theta_prop, d))
-            print("likelihood prop theta:", lh_theta_prop)
-            
-            for k in range(self.K):
-                #transition probabilities theta|theta_prop and theta_prop|theta
-                trans_theta_prop = np.log(self.trans_proba_beta(theta_current, theta_prop, k))
-                trans_theta_current = np.log(self.trans_proba_beta(theta_prop, theta_current, k))
-                
-                #accept/reject probability
-                numerator = np.sum(lh_theta_prop) + np.sum(prior_theta_prop) + trans_theta_current
-                denominator = np.sum(lh_theta_current) + np.sum(prior_theta_current) + trans_theta_prop
-                accept_proba= numerator - denominator
-                print("LOG acceptance probability =",accept_proba)
-                
-                if np.log(np.random.uniform(0,1))< min(0,accept_proba):
-                    theta[k,d]=theta_prop[k]
-            
-        return theta
-
     def resample_theta_rw(self):
         accept_rate=0
-        theta = self.theta
+        theta = np.copy(self.theta)
         a = self.alpha_prior / self.K
-        std_prop=0.05 #standard deviation of truncated normal RW proposal
+        std_prop=0.1 #standard deviation of truncated normal RW proposal
         print("_______3.resample theta|Z,X using MHA_______")
         for d in range(self.D):
             #extract current theta_d at index k
@@ -249,38 +174,28 @@ class IOMM():
                 while (theta_current[k] < 10**(-3) or theta_current[k] > 0.95):
                     print("redraw theta",k)
                     theta_current[k]=beta.rvs(a,1)
-            print("current theta:",theta_current)
             
             #draw a proposal parameter centered around its current value
             #random walk proposal, gaussian truncated to interval (0,1)
             theta_prop=truncnorm.rvs(a=(0-theta_current)/std_prop,b=(1-theta_current)/std_prop,
                                      loc=theta_current,scale=std_prop,size=self.K)
-            print("theta_k_d proposal:",theta_prop)
             
             #joint prior BETA(alpha/K,1) density over current and proposed parameters
             prior_theta_current = beta.pdf(theta_current, a, 1)
-            print("joint prior current theta:", prior_theta_current)
             prior_theta_prop = beta.pdf(theta_prop, a, 1)
-            print("joint prior prop theta:", prior_theta_prop)
             
             #likelihood densities
             lh_theta_current = self.likelihood_ber_d(theta_current, d)
-            print("likelihood current theta:", lh_theta_current)
             lh_theta_prop = self.likelihood_ber_d(theta_prop, d)
-            print("likelihood current prop:", lh_theta_prop)
-            print('ratio likelihood*prior',np.dot(lh_theta_prop,prior_theta_prop)/np.dot(lh_theta_current,prior_theta_current))
-            
+           
             for k in range(self.K):
                 #transition probabilities theta|theta_prop and theta_prop|theta
                 trans_theta_current = norm.cdf(theta_current[k]/theta_prop[k],loc=0,scale=1)
-                print("transition proba current | prop :",trans_theta_current)
                 trans_theta_prop = norm.cdf(theta_prop[k]/theta_current[k],loc=0,scale=1)
-                print("transition proba prop | current :",trans_theta_prop)
                 #accept/reject probability
                 numerator = np.dot(lh_theta_prop,prior_theta_prop) * trans_theta_current
                 denominator = np.dot(lh_theta_current,prior_theta_current) * trans_theta_prop
                 accept_proba= numerator / denominator
-                print("acceptance probability =",accept_proba)
                 
                 if np.random.uniform(0,1)< min(accept_proba,1):
                     print("accept")
