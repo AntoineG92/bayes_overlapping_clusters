@@ -1,6 +1,7 @@
 # A non parametric bayesian approach to modeling Overlapping Clusters
 
 Article de référence: "[A non parametric bayesian approach to modeling Overlapping Clusters](http://mlg.eng.cam.ac.uk/zoubin/papers/HelGha07over.pdf)"
+
 Code : Zakarya Ali, Quentin Spalla, Antoine Grelety
 
 Ce fichier contient:
