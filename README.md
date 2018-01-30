@@ -10,7 +10,12 @@
 \paperw11900\paperh16840\margl1440\margr1440\vieww19200\viewh8400\viewkind0
 \pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
 
-\f0\b\fs32 \cf0 \ul \ulc0 README: A non parametric approach to modeling Overlapping Clusters\
+\f0\fs24 \cf0 # bayes_overlapping_clusters\
+Projet ENSAE - Statistiques Bay\'e9siennes - Antoine Grelety, Quentin Spalla, Zakarya Ali\
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\b\fs32 \cf0 \ul \ulc0 README: A non parametric approach to modeling Overlapping Clusters\
 \
 
 \b0 \ulnone Ce fichier contient:\
