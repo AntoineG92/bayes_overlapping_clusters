@@ -1,4 +1,7 @@
-# README: A non parametric approach to modeling Overlapping Clusters
+# A non parametric bayesian approach to modeling Overlapping Clusters
+
+Article de référence: "[A non parametric bayesian approach to modeling Overlapping Clusters](http://mlg.eng.cam.ac.uk/zoubin/papers/HelGha07over.pdf)"
+Code : Zakarya Ali, Quentin Spalla, Antoine Grelety
 
 Ce fichier contient:
 * Un notebook IOMM_algo_synthetic_data_K_finite_final.ipynb pour compiler le Mixture Model avec des données synthétiques
